@@ -320,8 +320,8 @@ window.SIDEWAVE_DATA = (() => {
   const $$ = (selector, context = document) => [...context.querySelectorAll(selector)];
   const STORAGE = {
     theme: 'sidewave-theme-v2', lang: 'sidewave-lang-v2', following: 'sidewave-following-v2',
-    name: 'sidewave-profile-name-v2', playlist: 'sidewave-youtube-playlist-v2', currentVideo: 'sidewave-current-video-v2',
-    events: 'sidewave-url-sources-events-v1', ticketmasterKey: 'sidewave-ticketmaster-key-v2'
+    name: 'sidewave-profile-name-v2', nameSeeded: 'sidewave-profile-name-seeded-v1', playlist: 'sidewave-youtube-playlist-v2', currentVideo: 'sidewave-current-video-v2',
+    events: 'sidewave-live-events-v2', eventsUpdated: 'sidewave-live-events-updated-v1', mapHeight: 'sidewave-tour-map-height-v1', ticketmasterKey: 'sidewave-ticketmaster-key-v2'
   };
   // TEMPORARY: This key is intentionally embedded for this static GitHub Pages demo.
   // Anyone who can access the public repository or browser source can copy it.
@@ -334,15 +334,20 @@ window.SIDEWAVE_DATA = (() => {
   ];
   const safeParse = (raw, fallback) => { try { const parsed = JSON.parse(raw); return parsed ?? fallback; } catch { return fallback; } };
   const artistMap = new Map(DATA.artists.map(a => [a.id, a]));
+  const storedDisplayName = localStorage.getItem(STORAGE.name);
+  const profileNameWasSeeded = localStorage.getItem(STORAGE.nameSeeded) === '1';
+  const cachedEvents = safeParse(localStorage.getItem(STORAGE.events), []).filter(ev => ev && ev.id && ev.artistId && artistMap.has(ev.artistId));
   const state = {
     theme: localStorage.getItem(STORAGE.theme) || 'light',
     lang: localStorage.getItem(STORAGE.lang) || 'ko',
     following: safeParse(localStorage.getItem(STORAGE.following), ['silica-gel','radiohead','oasis']).filter(id => artistMap.has(id)),
-    name: localStorage.getItem(STORAGE.name) || '정유준',
+    // Seed the requested profile name once on this version; later manual edits are preserved.
+    name: profileNameWasSeeded && storedDisplayName ? storedDisplayName : '정유준',
     playlist: safeParse(localStorage.getItem(STORAGE.playlist), null) || seedPlaylist.map(item => ({ ...item })),
     currentVideoId: localStorage.getItem(STORAGE.currentVideo) || seedPlaylist[0].videoId,
     // Live event data is fetched when the Tour Map is opened; no fake dates or venue coordinates are inserted.
-    events: [], eventsUpdated: 0, eventsArtists: '', tourStatus: 'not-configured', tourError: '', genre: 'all', search: '', region: 'all',
+    // Keep the last successful result locally so an in-site event detail URL also works after refresh.
+    events: cachedEvents, eventsUpdated: Number(localStorage.getItem(STORAGE.eventsUpdated)) || 0, eventsArtists: '', tourStatus: 'not-configured', tourError: '', genre: 'all', search: '', region: 'all',
     ticketmasterKey: localStorage.getItem(STORAGE.ticketmasterKey) || EMBEDDED_TICKETMASTER_KEY, activeArtistTab: 'albums', itunesTracks: new Map(), loadingTours: false
   };
   const normalize = value => String(value || '').toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9가-힣]+/g,' ').trim();
@@ -356,6 +361,7 @@ window.SIDEWAVE_DATA = (() => {
       localStorage.setItem(STORAGE.lang, state.lang);
       localStorage.setItem(STORAGE.following, JSON.stringify(state.following));
       localStorage.setItem(STORAGE.name, state.name);
+      localStorage.setItem(STORAGE.nameSeeded, '1');
       localStorage.setItem(STORAGE.playlist, JSON.stringify(state.playlist));
       localStorage.setItem(STORAGE.currentVideo, state.currentVideoId);
     } catch (error) { console.warn('SIDEWAVE: local storage unavailable', error); }
@@ -375,7 +381,7 @@ window.SIDEWAVE_DATA = (() => {
     const raw = location.hash.replace(/^#/, '') || 'home';
     const [routeName, query = ''] = raw.split('?');
     const params = new URLSearchParams(query);
-    const allowed = ['home','artists','artist','tours','library','help'];
+    const allowed = ['home','artists','artist','tours','event','library','help'];
     return { route: allowed.includes(routeName) ? routeName : 'home', id: params.get('id') || 'silica-gel', q: params.get('q') || '' };
   }
   function go(route, params = {}) {
@@ -406,7 +412,7 @@ window.SIDEWAVE_DATA = (() => {
     return `https://www.ticketmaster.com/search?q=${encodeURIComponent(`${a.name} ${ev?.city || ''} concert tickets`)}`;
   }
   function navItem(route, label, icon) {
-    const active = currentRoute === route || (route === 'artists' && currentRoute === 'artist');
+    const active = currentRoute === route || (route === 'artists' && currentRoute === 'artist') || (route === 'tours' && currentRoute === 'event');
     return `<a class="nav-link ${active ? 'active' : ''}" href="${go(route)}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`;
   }
   function shell(content) {
@@ -585,8 +591,13 @@ window.SIDEWAVE_DATA = (() => {
       <div class="live-summary"><span class="status-pill ${state.loadingTours ? 'loading' : state.tourStatus === 'connected' ? 'live' : ''}"><i class="status-led"></i>${status}</span><div class="tour-controls"><select id="tour-region" aria-label="${tr('지역 필터','Region filter')}"><option value="all" ${state.region === 'all' ? 'selected' : ''}>${tr('모든 지역','All regions')}</option><option value="KR" ${state.region === 'KR' ? 'selected' : ''}>${tr('한국','Korea')}</option><option value="GLOBAL" ${state.region === 'GLOBAL' ? 'selected' : ''}>${tr('한국 외','Outside Korea')}</option></select><button class="btn small" data-action="search-tours" ${state.loadingTours ? 'disabled' : ''}>↻ ${tr('실제 공연 검색','Search live events')}</button></div></div>
       <details class="surface tour-settings" ${!state.ticketmasterKey ? 'open' : ''}><summary>${tr('무료 Ticketmaster API 연결 설정','Free Ticketmaster API setup')}</summary><div class="api-form"><div class="field"><label for="ticketmaster-key">${tr('Consumer Key / API Key','Consumer Key / API Key')}</label><input id="ticketmaster-key" type="password" autocomplete="off" placeholder="${tr('API 키를 붙여넣으세요','Paste your API key')}" value="${esc(state.ticketmasterKey)}"></div><button class="btn primary" data-action="save-ticketmaster-key">${tr('키 저장','Save key')}</button><a class="btn" href="https://developer.ticketmaster.com/" target="_blank" rel="noopener noreferrer">${tr('무료 키 발급','Get a free key')} ↗</a></div><p class="helper-text">${tr('이 데모는 임시 API 키를 script.js 코드에 포함합니다. 공개 GitHub 저장소와 브라우저 개발자 도구에서 누구나 키를 확인할 수 있으니 개인·결제용 비밀키는 넣지 마세요. 테스트를 마치면 개발자 포털에서 키를 교체하거나 폐기하세요. Ticketmaster 데이터는 모든 국가/공연을 포함하지 않습니다.','This demo embeds a temporary API key in script.js. Anyone can view it in the public GitHub repository and browser developer tools, so never put private or payment credentials here. Replace or revoke this key in the developer portal after testing. Ticketmaster does not cover every country or event.')}</p></details>
       <section class="tour-layout">
-        <div class="surface map-panel"><div class="map-head"><div><div class="eyebrow">EVENT LOCATIONS</div><h2>${tr('공연 위치 지도','Tour location map')}</h2></div><span class="subtle" style="font-size:10px">OpenStreetMap</span></div><div id="live-map" class="map-canvas" aria-label="${tr('공연 위치 지도','Tour location map')}"></div><div class="map-legend"><span>${tr('API에서 좌표를 반환한 공연만 표시됩니다.','Only events with coordinates returned by the API are mapped.')}</span><span>© OpenStreetMap</span></div></div>
-        <div class="surface event-panel"><div class="event-panel-head"><div><h2>${tr('실제 공연 및 티켓','Live events & tickets')}</h2><p class="helper-text">${tr('API 검색 결과의 공식 티켓 링크입니다.','Official ticket links from API search results.')}</p></div><span class="subtle" style="font-size:10px">${events.length}</span></div><div class="event-list">${events.length ? events.map(eventRow).join('') : `<div class="empty-state"><strong>${state.tourStatus === 'error' ? tr('공연 데이터를 불러오지 못했어요.','Could not load event data.') : tr('아직 공연 데이터가 없습니다.','No event data loaded yet.')}</strong><p>${tr('무료 API 키를 설정하고 실제 공연 검색을 눌러 주세요. 국내 공연이 검색되지 않으면 아래 아티스트별 공식 검색 링크를 이용할 수 있습니다.','Set up a free API key and search. If Korean events are not returned, use the artist-specific official search links below.')}</p></div>`}</div></div>
+        <div class="surface map-panel">
+          <div class="map-head"><div><div class="eyebrow">EVENT LOCATIONS</div><h2>${tr('공연 위치 지도','Tour location map')}</h2><p class="map-subtitle">${tr('마커를 누르면 공연 요약이 열립니다. 아래 손잡이를 드래그해 지도 높이를 조절하세요.','Select a marker for a quick summary. Drag the handle below the map to resize it.')}</p></div><span class="subtle" style="font-size:10px">OpenStreetMap</span></div>
+          <div id="live-map" class="map-canvas" aria-label="${tr('공연 위치 지도','Tour location map')}"></div>
+          <div id="map-resize-handle" class="map-resize-handle" role="separator" aria-orientation="horizontal" aria-valuemin="280" aria-valuemax="900" aria-valuenow="560" aria-label="${tr('지도 높이 조절','Resize map height')}" tabindex="0"><span></span><small>${tr('드래그하여 지도 크기 조절','Drag to resize map')}</small></div>
+          <div class="map-legend"><span>${tr('API에서 좌표를 반환한 공연만 핀으로 표시됩니다. 모든 검색 결과는 아래 목록에서 확인할 수 있어요.','Only events with coordinates are pinned. All search results appear in the list below.')}</span><span>© OpenStreetMap</span></div>
+        </div>
+        <div class="surface event-panel"><div class="event-panel-head"><div><div class="eyebrow">LIVE EVENT LIST</div><h2>${tr('공연 및 티켓','Events & tickets')}</h2><p class="helper-text">${tr('공연 카드를 눌러 SIDEWAVE 안에서 상세 정보를 보고, 필요한 경우 공식 판매처로 이동하세요.','Open an event card for details inside SIDEWAVE, then visit the official provider when needed.')}</p></div><span class="event-total">${events.length}</span></div><div class="event-list">${events.length ? events.map(eventRow).join('') : `<div class="empty-state"><strong>${state.tourStatus === 'error' ? tr('공연 데이터를 불러오지 못했어요.','Could not load event data.') : tr('아직 공연 데이터가 없습니다.','No event data loaded yet.')}</strong><p>${tr('무료 API 키를 설정하고 실제 공연 검색을 눌러 주세요. 국내 공연이 검색되지 않으면 아래 아티스트별 공식 검색 링크를 이용할 수 있습니다.','Set up a free API key and search. If Korean events are not returned, use the artist-specific official search links below.')}</p></div>`}</div></div>
       </section>
       <section class="section"><div class="section-head"><div><div class="eyebrow">BACKUP SOURCES</div><h2>${tr('아티스트별 공식 검색 링크','Artist source links')}</h2><p>${tr('API에 없는 공연은 예매처에서 직접 확인하세요.','Check ticket providers directly for events not covered by the API.')}</p></div></div><div class="tour-source-list">${followed.length ? followed.slice(0,40).map(tourSourceCard).join('') : `<div class="empty-state">${tr('먼저 아티스트를 팔로우하세요.','Follow artists first.')}</div>`}</div></section>
       <p class="tour-data-note">${tr('Ticketmaster는 공개 이벤트 데이터를 제공하지만 한국을 포함한 모든 시장의 전체 일정을 보장하지 않습니다. 티켓 구매는 Ticketmaster 또는 각 외부 판매처에서 진행되며, SIDEWAVE는 결제 정보를 받지 않습니다.','Ticketmaster provides public event data but does not guarantee complete coverage of every market, including Korea. Purchases happen on Ticketmaster or other ticket-provider sites; SIDEWAVE does not collect payment information.')}</p>`;
@@ -597,8 +608,32 @@ window.SIDEWAVE_DATA = (() => {
     const day = ev.date ? new Date(`${ev.date}T12:00:00`).getDate() : '—';
     const source = ev.source || 'Official API';
     const href = ticketUrl(ev, a);
-    return `<article class="event-row"><div class="event-date"><small>${esc(dateStr.split(' ')[0])}</small><strong>${esc(day)}</strong></div><div class="event-info"><strong>${esc(a.name)}${ev.name && normalize(ev.name) !== normalize(a.name) ? ` · ${esc(ev.name)}` : ''}</strong><p>${esc(ev.city || ev.venue || '')}${ev.city && ev.venue ? ' · ' : ''}${esc(ev.venue || '')}${ev.country ? ` · ${esc(ev.country)}` : ''}</p><div class="event-meta"><span class="source-badge">${esc(source)}</span>${ev.time ? `<span class="source-badge">${esc(ev.time)}</span>` : ''}</div><div class="event-actions"><a href="${href}" target="_blank" rel="noopener noreferrer">${tr('공식 이벤트 / 티켓','Event / tickets')} ↗</a>${ev.url && ev.ticketUrl && ev.url !== ev.ticketUrl ? `<a href="${ev.url}" target="_blank" rel="noopener noreferrer">${tr('이벤트 정보','Event info')} ↗</a>` : ''}</div></div></article>`;
+    const detailHref = go('event', { id: ev.id });
+    return `<article class="event-row">
+      <div class="event-date"><small>${esc(dateStr.split(' ')[0])}</small><strong>${esc(day)}</strong></div>
+      <div class="event-info"><span class="event-artist">${esc(a.name)}</span><strong class="event-title">${esc(ev.name || a.name)}</strong><p>${esc([ev.venue, ev.city, ev.country].filter(Boolean).join(' · ') || tr('장소 정보 없음','Venue details unavailable'))}</p>
+        <div class="event-meta"><span class="source-badge">${esc(source)}</span>${ev.time ? `<span class="source-badge">${esc(ev.time)}</span>` : ''}</div>
+        <div class="event-actions"><a class="event-detail-link" href="${esc(detailHref)}">${tr('SIDEWAVE에서 상세 보기','View details')} →</a><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${tr('공식 티켓 ↗','Official tickets ↗')}</a></div>
+      </div></article>`;
   }
+  function eventDetailPage(eventId) {
+    const ev = state.events.find(item => String(item.id) === String(eventId));
+    if (!ev) {
+      return `<section class="page-heading"><div><div class="eyebrow">LIVE EVENT DETAIL</div><h1>${tr('공연 정보를 찾을 수 없어요.','Event not found')}</h1><p>${tr('상세 정보를 보려면 먼저 투어 지도에서 실제 공연을 다시 검색해 주세요.','Return to the tour map and refresh live events to load this event again.')}</p></div></section><section class="surface event-detail-missing"><strong>${tr('이 공연의 상세 데이터가 현재 브라우저에 없습니다.','This event is not in the current browser cache.')}</strong><p>${tr('공연 목록으로 돌아가 최신 데이터를 불러오세요.','Return to the event list and load the latest data.')}</p><a class="btn primary" href="${go('tours')}">← ${tr('투어 지도 돌아가기','Back to tour map')}</a></section>`;
+    }
+    const a = artist(ev.artistId);
+    const dateFull = ev.date ? new Date(`${ev.date}T12:00:00`).toLocaleDateString(state.lang === 'ko' ? 'ko-KR' : 'en-US', { year:'numeric', month:'long', day:'numeric', weekday:'long' }) : tr('날짜 미정','Date to be announced');
+    const location = [ev.venue, ev.city, ev.country].filter(Boolean).join(', ');
+    const href = ticketUrl(ev, a);
+    const links = officialLinks(a);
+    return `<div class="event-detail-top"><a class="text-link" href="${go('tours')}">← ${tr('투어 지도','Tour map')}</a><span class="source-badge">${esc(ev.source || 'Official API')}</span></div>
+      <section class="page-heading event-detail-heading"><div><div class="eyebrow">SIDEWAVE · LIVE EVENT</div><h1>${esc(ev.name || a.name)}</h1><p>${esc(a.name)}${a.genre ? ` · ${esc(a.genre)}` : ''}</p></div><div class="event-detail-date"><span>${tr('공연 날짜','EVENT DATE')}</span><strong>${esc(ev.date ? new Date(`${ev.date}T12:00:00`).toLocaleDateString(state.lang === 'ko' ? 'ko-KR' : 'en-US', { month:'short', day:'numeric' }) : 'TBA')}</strong><small>${esc(ev.date ? new Date(`${ev.date}T12:00:00`).getFullYear() : '')}</small></div></section>
+      <section class="event-detail-grid"><article class="surface event-detail-main"><div class="event-detail-section-head"><div><div class="eyebrow">EVENT INFORMATION</div><h2>${tr('공연 정보','Event information')}</h2></div></div>
+        <dl class="event-facts"><div><dt>${tr('아티스트','Artist')}</dt><dd><a href="${go('artist',{id:a.id})}">${esc(a.name)} →</a></dd></div><div><dt>${tr('날짜','Date')}</dt><dd>${esc(dateFull)}</dd></div><div><dt>${tr('시작 시간','Start time')}</dt><dd>${esc(ev.time || tr('공개된 시간 정보 없음','Time not provided'))}</dd></div><div><dt>${tr('공연장','Venue')}</dt><dd>${esc(ev.venue || tr('장소 정보 미제공','Venue not provided'))}</dd></div><div><dt>${tr('도시 / 국가','City / country')}</dt><dd>${esc(location || tr('위치 정보 미제공','Location not provided'))}</dd></div><div><dt>${tr('데이터 출처','Data source')}</dt><dd>${esc(ev.source || 'Official event API')}</dd></div>${validCoords(ev) ? `<div><dt>${tr('지도 좌표','Map coordinates')}</dt><dd>${Number(ev.lat).toFixed(4)}, ${Number(ev.lon).toFixed(4)}</dd></div>` : ''}</dl>
+        <div class="event-detail-note"><strong>${tr('최신 정보 확인','Check latest details')}</strong><p>${tr('공연 시간, 좌석, 가격, 취소 및 입장 조건은 변경될 수 있습니다. 구매 전 공식 판매처에서 최신 정보를 확인하세요. SIDEWAVE는 티켓을 판매하거나 결제를 처리하지 않습니다.','Event times, seats, prices, cancellation and entry policies can change. Confirm the latest details with the official provider before purchase. SIDEWAVE does not sell tickets or process payments.')}</p></div>
+      </article><aside class="surface event-detail-side"><div class="eyebrow">OFFICIAL LINKS</div><h2>${tr('예매 및 추가 정보','Tickets & more details')}</h2><p>${tr('상세 페이지에 제공되지 않은 좌석·가격·판매 현황은 외부 공식 사이트에서 확인해 주세요.','Check the official provider for seat maps, prices and availability not shown here.')}</p><a class="btn primary event-ticket-button" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${tr('공식 이벤트 / 티켓 확인','Open official event / tickets')} ↗</a>${ev.url && ev.ticketUrl && ev.url !== ev.ticketUrl ? `<a class="btn event-ticket-button" href="${esc(ev.url)}" target="_blank" rel="noopener noreferrer">${tr('이벤트 정보 페이지','Event information page')} ↗</a>` : ''}<div class="event-more-links"><h3>${tr('다른 공식 검색 출처','Other event sources')}</h3>${links.map(link => `<a href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${esc(link.label)} ↗</a>`).join('')}</div></aside></section>`;
+  }
+
   function upcomingEvents() {
     const today = new Date().toISOString().slice(0,10);
     return state.events.filter(ev => state.following.includes(ev.artistId) && (!ev.date || ev.date >= today)).sort((a,b) => String(a.date || '9999').localeCompare(String(b.date || '9999')));
@@ -626,7 +661,7 @@ window.SIDEWAVE_DATA = (() => {
     return `<section class="page-heading"><div><div class="eyebrow">HELP CENTER</div><h1>${tr('사용 안내','Help center')}</h1><p>${tr('기능과 데이터 출처를 확인할 수 있어요.','How features work and where data comes from.')}</p></div></section>
       <section class="help-grid">
         <article class="help-card"><span class="help-icon">＋</span><h2>${tr('팔로우와 아티스트 표지','Follow & artist artwork')}</h2><p>${tr('팔로우 목록은 이 브라우저에 저장됩니다. 아티스트 표지·앨범 표지·곡 미리듣기는 API 키 없이 Apple iTunes Search URL에서 필요할 때 불러옵니다. 이미지가 없으면 디자인용 색상 표지가 남습니다.','Followed artists are stored in this browser. Artist artwork, album art, and track previews are loaded on demand from Apple’s iTunes Search URL without an API key. A designed fallback remains when artwork is unavailable.')}</p></article>
-        <article class="help-card"><span class="help-icon">◎</span><h2>${tr('투어 일정 출처','Tour sources')}</h2><p>${tr('투어 지도는 Ticketmaster attraction 검색으로 아티스트 ID를 먼저 찾은 다음 해당 ID로 예정 공연을 조회합니다. 장소 좌표가 있는 공연은 지도 핀으로 표시하고, 좌표가 누락된 공연은 오른쪽 목록과 티켓 링크에 표시합니다. API에 없는 공연은 아티스트별 공식 검색 링크로 확인하세요. 이 데모 키는 공개 저장소에서 보이므로 테스트 후 교체하거나 폐기하세요.','Tour Map first resolves the Ticketmaster attraction ID, then looks up upcoming events for that exact artist. Shows with venue coordinates appear as map pins; shows without coordinates remain in the list with ticket links. Use artist-specific official search links for events outside API coverage. This demo key is public in the repository and should be rotated or revoked after testing.')}</p></article>
+        <article class="help-card"><span class="help-icon">◎</span><h2>${tr('투어 일정 출처','Tour sources')}</h2><p>${tr('투어 지도는 Ticketmaster attraction 검색으로 아티스트 ID를 먼저 찾은 다음 해당 ID로 예정 공연을 조회합니다. 지도 아래 손잡이를 드래그해 높이를 조절할 수 있고, 핀을 누르면 간단한 팝업과 SIDEWAVE 내부 상세 페이지가 열립니다. 공연 목록은 지도 아래 표시되며, 좌표가 없는 공연도 목록에서 볼 수 있습니다. 좌석·가격·판매 현황은 상세 페이지의 공식 판매처 링크에서 확인하세요. 이 데모 키는 공개 저장소에서 보이므로 테스트 후 교체하거나 폐기하세요.','Tour Map first resolves the Ticketmaster attraction ID, then looks up upcoming events for that exact artist. Drag the handle below the map to resize it; marker popups show a summary and open the in-app event detail page. The event list appears below the full-width map. Shows without coordinates remain in the list. Use official provider links on the detail page for prices, seats and availability. This demo key is public in the repository and should be rotated or revoked after testing.')}</p></article>
         <article class="help-card"><span class="help-icon">▶</span><h2>${tr('YouTube 플레이리스트','YouTube playlist')}</h2><p>${tr('YouTube에서 동영상 주소를 복사해 내 플레이리스트에 추가하세요. YouTube IFrame Player API로 페이지 안에서 재생합니다. 별도의 검색 API는 사용하지 않으므로 YouTube 검색은 새 탭에서 열고 링크를 붙여 넣습니다.','Copy a video URL from YouTube into your playlist. Playback uses the YouTube IFrame Player API. YouTube search opens in a new tab; paste the chosen video link into your playlist.')}</p></article>
         <article class="help-card"><span class="help-icon">◐</span><h2>${tr('언어와 테마','Language & theme')}</h2><p>${tr('상단 버튼으로 한국어/영어, 라이트/다크 테마를 전환할 수 있습니다. 설정은 이 브라우저에 저장됩니다.','Use the top controls to switch Korean/English and light/dark themes. Preferences are stored in this browser.')}</p></article>
         <article class="help-card"><span class="help-icon">i</span><h2>${tr('API 및 키 관리','APIs & key handling')}</h2><p>${tr('음원·표지 데이터는 공개 iTunes Search URL에서 API 키 없이 조회합니다. 투어 지도는 먼저 Ticketmaster attraction ID를 찾고 그 ID로 예정 공연을 조회합니다. API 범위와 좌표 제공 여부에 따라 지도 핀이 없을 수 있으며, 실제 공연 데이터가 없을 때 임의 일정을 만들지 않습니다. script.js의 임시 키는 공개 저장소에서 보일 수 있으므로 테스트 후 교체하거나 폐기하세요. 장기 운영 서비스는 서버 프록시를 사용하는 것이 좋습니다.','Music metadata and previews use Apple’s public iTunes Search URL without a key. Tour Map resolves Ticketmaster attraction IDs before querying upcoming events. Map pins depend on event coverage and venue coordinates; the app never invents dates. The temporary key in script.js is public in this repository and should be rotated or revoked after testing. Use a server proxy for long-term production.')}</p><div class="api-doc-links"><a href="https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/" target="_blank" rel="noopener noreferrer">iTunes Search API info ↗</a><a href="https://developers.google.com/youtube/iframe_api_reference" target="_blank" rel="noopener noreferrer">YouTube IFrame API ↗</a><a href="https://developer.ticketmaster.com/" target="_blank" rel="noopener noreferrer">Ticketmaster Discovery API ↗</a></div></article>
@@ -644,6 +679,7 @@ window.SIDEWAVE_DATA = (() => {
     if (currentRoute === 'artists') content = artistsPage(route.q);
     else if (currentRoute === 'artist') content = artistPage(route.id);
     else if (currentRoute === 'tours') content = toursPage();
+    else if (currentRoute === 'event') content = eventDetailPage(route.id);
     else if (currentRoute === 'library') content = libraryPage();
     else if (currentRoute === 'help') content = helpPage();
     else content = profileHome();
@@ -953,6 +989,7 @@ window.SIDEWAVE_DATA = (() => {
       state.events = [...unique.values()].sort((a,b) => String(a.date || '9999').localeCompare(String(b.date || '9999')));
       state.eventsUpdated = Date.now();
       state.eventsArtists = artistListHash();
+      try { localStorage.setItem(STORAGE.events, JSON.stringify(state.events)); localStorage.setItem(STORAGE.eventsUpdated, String(state.eventsUpdated)); } catch (storageError) { console.warn('SIDEWAVE: could not cache live events', storageError); }
       state.tourStatus = 'connected';
       return state.events;
     } catch (error) {
@@ -971,6 +1008,9 @@ window.SIDEWAVE_DATA = (() => {
     const el = $('#live-map');
     if (!el) return;
     if (!window.L) { el.innerHTML = `<div class="empty-state"><strong>${tr('지도를 불러오지 못했어요.','Map could not be loaded.')}</strong><p>${tr('인터넷 연결을 확인한 뒤 새로고침해 주세요.','Check your connection and refresh.')}</p></div>`; return; }
+    const savedHeight = Number(localStorage.getItem(STORAGE.mapHeight));
+    el.style.height = `${Math.max(280, Math.min(900, Number.isFinite(savedHeight) && savedHeight ? savedHeight : 560))}px`;
+    bindMapResizer(el);
     mapInstance = L.map(el, { scrollWheelZoom: false, preferCanvas: true }).setView([30, 115], 2);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(mapInstance);
     const events = upcomingEvents().filter(ev => state.region === 'all' || (state.region === 'KR' ? ev.countryCode === 'KR' || ev.country === 'South Korea' : !(ev.countryCode === 'KR' || ev.country === 'South Korea')));
@@ -979,9 +1019,9 @@ window.SIDEWAVE_DATA = (() => {
       const a = artist(ev.artistId); const color = a.accent || '#b9ef9e';
       const icon = L.divIcon({ className: 'sidewave-map-marker', html: `<span style="display:block;width:15px;height:15px;border:3px solid #fff;border-radius:50%;background:${color};box-shadow:0 1px 6px #0007"></span>`, iconSize: [19,19], iconAnchor:[9,9] });
       const marker = L.marker([ev.lat,ev.lon], { icon }).addTo(mapInstance);
-      const href = ticketUrl(ev,a);
       const date = ev.date ? new Date(`${ev.date}T12:00:00`).toLocaleDateString(state.lang === 'ko' ? 'ko-KR' : 'en-US',{year:'numeric',month:'short',day:'numeric'}) : tr('날짜 미정','Date TBA');
-      marker.bindPopup(`<div class="map-popup"><strong>${esc(a.name)}</strong><span>${esc(ev.name || '')}</span><span>${esc(date)}</span><span>${esc(ev.city)} · ${esc(ev.venue)}</span><small>${esc(ev.source || 'Official API')}</small><a href="${href}" target="_blank" rel="noopener noreferrer">${tr('이벤트 / 티켓 보기','View event / tickets')} ↗</a></div>`);
+      const detailHref = go('event', { id: ev.id });
+      marker.bindPopup(`<div class="map-popup"><strong>${esc(a.name)}</strong><span class="map-popup-title">${esc(ev.name || '')}</span><span>${esc(date)}${ev.time ? ` · ${esc(ev.time)}` : ''}</span><span>${esc([ev.venue, ev.city, ev.country].filter(Boolean).join(' · ') || tr('장소 정보 없음','Venue details unavailable'))}</span><small>${esc(ev.source || 'Official API')}</small><a class="map-popup-detail" href="${esc(detailHref)}">${tr('SIDEWAVE에서 상세 보기','View full details')} →</a></div>`);
       bounds.push([ev.lat,ev.lon]);
     });
     if (bounds.length === 1) mapInstance.setView(bounds[0], 6);
@@ -1013,6 +1053,47 @@ window.SIDEWAVE_DATA = (() => {
     setTimeout(() => { if (mapInstance) mapInstance.invalidateSize({ pan:false }); }, 100);
     window.addEventListener('resize', debounce(() => mapInstance?.invalidateSize({ pan:false }), 160), { once:true });
   }
+  function bindMapResizer(mapElement) {
+    const handle = $('#map-resize-handle');
+    if (!handle || !mapElement) return;
+    const clampHeight = value => Math.round(Math.max(280, Math.min(900, value)));
+    const applyHeight = (value, persist = false) => {
+      const height = clampHeight(value);
+      mapElement.style.height = `${height}px`;
+      handle.setAttribute('aria-valuenow', String(height));
+      if (persist) {
+        try { localStorage.setItem(STORAGE.mapHeight, String(height)); } catch (error) { console.warn('SIDEWAVE: map height preference could not be saved', error); }
+      }
+      if (mapInstance) mapInstance.invalidateSize({ pan:false });
+    };
+    handle.setAttribute('aria-valuenow', String(clampHeight(mapElement.getBoundingClientRect().height || 560)));
+    handle.addEventListener('pointerdown', event => {
+      if (event.button !== 0 && event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+      event.preventDefault();
+      const startY = event.clientY;
+      const startHeight = mapElement.getBoundingClientRect().height;
+      try { handle.setPointerCapture(event.pointerId); } catch {}
+      const move = pointerEvent => applyHeight(startHeight + pointerEvent.clientY - startY, false);
+      const finish = () => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', finish);
+        handle.removeEventListener('pointercancel', finish);
+        applyHeight(mapElement.getBoundingClientRect().height, true);
+        if (mapInstance) mapInstance.invalidateSize({ pan:false });
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', finish, { once:true });
+      handle.addEventListener('pointercancel', finish, { once:true });
+    });
+    handle.addEventListener('keydown', event => {
+      if (!['ArrowUp','ArrowDown','Home','End'].includes(event.key)) return;
+      event.preventDefault();
+      const current = mapElement.getBoundingClientRect().height;
+      const next = event.key === 'Home' ? 280 : event.key === 'End' ? 900 : current + (event.key === 'ArrowUp' ? 40 : -40);
+      applyHeight(next, true);
+    });
+  }
+
   function debounce(fn, wait) { let timer; return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), wait); }; }
 
   function loadYouTubeApi() {
