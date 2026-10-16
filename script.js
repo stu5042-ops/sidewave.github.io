@@ -321,7 +321,7 @@ window.SIDEWAVE_DATA = (() => {
   const STORAGE = {
     theme: 'sidewave-theme-v2', lang: 'sidewave-lang-v2', following: 'sidewave-following-v2',
     name: 'sidewave-profile-name-v2', playlist: 'sidewave-youtube-playlist-v2', currentVideo: 'sidewave-current-video-v2',
-    events: 'sidewave-url-sources-events-v1', ticketmasterKey: 'sidewave-ticketmaster-key-v1'
+    events: 'sidewave-url-sources-events-v1', ticketmasterKey: 'sidewave-ticketmaster-key-v2'
   };
   // TEMPORARY: This key is intentionally embedded for this static GitHub Pages demo.
   // Anyone who can access the public repository or browser source can copy it.
@@ -338,11 +338,11 @@ window.SIDEWAVE_DATA = (() => {
     theme: localStorage.getItem(STORAGE.theme) || 'light',
     lang: localStorage.getItem(STORAGE.lang) || 'ko',
     following: safeParse(localStorage.getItem(STORAGE.following), ['silica-gel','radiohead','oasis']).filter(id => artistMap.has(id)),
-    name: localStorage.getItem(STORAGE.name) || '음악 탐험가',
+    name: localStorage.getItem(STORAGE.name) || '정유준',
     playlist: safeParse(localStorage.getItem(STORAGE.playlist), null) || seedPlaylist.map(item => ({ ...item })),
     currentVideoId: localStorage.getItem(STORAGE.currentVideo) || seedPlaylist[0].videoId,
-    // The URL-only edition doesn't keep API-key based event data or stale event caches.
-    events: [], eventsUpdated: 0, eventsArtists: '', tourStatus: 'not-configured', genre: 'all', search: '', region: 'all',
+    // Live event data is fetched when the Tour Map is opened; no fake dates or venue coordinates are inserted.
+    events: [], eventsUpdated: 0, eventsArtists: '', tourStatus: 'not-configured', tourError: '', genre: 'all', search: '', region: 'all',
     ticketmasterKey: localStorage.getItem(STORAGE.ticketmasterKey) || EMBEDDED_TICKETMASTER_KEY, activeArtistTab: 'albums', itunesTracks: new Map(), loadingTours: false
   };
   const normalize = value => String(value || '').toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9가-힣]+/g,' ').trim();
@@ -626,10 +626,10 @@ window.SIDEWAVE_DATA = (() => {
     return `<section class="page-heading"><div><div class="eyebrow">HELP CENTER</div><h1>${tr('사용 안내','Help center')}</h1><p>${tr('기능과 데이터 출처를 확인할 수 있어요.','How features work and where data comes from.')}</p></div></section>
       <section class="help-grid">
         <article class="help-card"><span class="help-icon">＋</span><h2>${tr('팔로우와 아티스트 표지','Follow & artist artwork')}</h2><p>${tr('팔로우 목록은 이 브라우저에 저장됩니다. 아티스트 표지·앨범 표지·곡 미리듣기는 API 키 없이 Apple iTunes Search URL에서 필요할 때 불러옵니다. 이미지가 없으면 디자인용 색상 표지가 남습니다.','Followed artists are stored in this browser. Artist artwork, album art, and track previews are loaded on demand from Apple’s iTunes Search URL without an API key. A designed fallback remains when artwork is unavailable.')}</p></article>
-        <article class="help-card"><span class="help-icon">◎</span><h2>${tr('투어 일정 출처','Tour sources')}</h2><p>${tr('현재 데모는 Ticketmaster Consumer Key를 script.js에 임시로 포함하므로 투어 지도에서 실제 이벤트 날짜·장소·좌표(제공되는 경우)와 공식 티켓 URL을 조회할 수 있습니다. 공개 저장소를 보는 누구나 키를 복사할 수 있습니다. 테스트가 끝나면 개발자 포털에서 키를 교체하거나 폐기하세요. API에 없는 공연을 위해 아티스트별 공식 검색 링크도 유지합니다.','This demo temporarily embeds the Ticketmaster Consumer Key in script.js so Tour Map can query event dates, venues, coordinates when available, and official ticket URLs. Anyone who can view the public repository can copy the key. Replace or revoke it in the developer portal after testing. Artist-specific links remain as a fallback for events not covered by the API.')}</p></article>
+        <article class="help-card"><span class="help-icon">◎</span><h2>${tr('투어 일정 출처','Tour sources')}</h2><p>${tr('투어 지도는 Ticketmaster attraction 검색으로 아티스트 ID를 먼저 찾은 다음 해당 ID로 예정 공연을 조회합니다. 장소 좌표가 있는 공연은 지도 핀으로 표시하고, 좌표가 누락된 공연은 오른쪽 목록과 티켓 링크에 표시합니다. API에 없는 공연은 아티스트별 공식 검색 링크로 확인하세요. 이 데모 키는 공개 저장소에서 보이므로 테스트 후 교체하거나 폐기하세요.','Tour Map first resolves the Ticketmaster attraction ID, then looks up upcoming events for that exact artist. Shows with venue coordinates appear as map pins; shows without coordinates remain in the list with ticket links. Use artist-specific official search links for events outside API coverage. This demo key is public in the repository and should be rotated or revoked after testing.')}</p></article>
         <article class="help-card"><span class="help-icon">▶</span><h2>${tr('YouTube 플레이리스트','YouTube playlist')}</h2><p>${tr('YouTube에서 동영상 주소를 복사해 내 플레이리스트에 추가하세요. YouTube IFrame Player API로 페이지 안에서 재생합니다. 별도의 검색 API는 사용하지 않으므로 YouTube 검색은 새 탭에서 열고 링크를 붙여 넣습니다.','Copy a video URL from YouTube into your playlist. Playback uses the YouTube IFrame Player API. YouTube search opens in a new tab; paste the chosen video link into your playlist.')}</p></article>
         <article class="help-card"><span class="help-icon">◐</span><h2>${tr('언어와 테마','Language & theme')}</h2><p>${tr('상단 버튼으로 한국어/영어, 라이트/다크 테마를 전환할 수 있습니다. 설정은 이 브라우저에 저장됩니다.','Use the top controls to switch Korean/English and light/dark themes. Preferences are stored in this browser.')}</p></article>
-        <article class="help-card"><span class="help-icon">i</span><h2>${tr('API 및 키 관리','APIs & key handling')}</h2><p>${tr('음원·표지 데이터는 공개 iTunes Search URL에서 API 키 없이 조회합니다. 투어 일정은 script.js에 포함된 임시 Ticketmaster 키로 검색합니다. GitHub에 키가 올라가면 공개 정보가 되므로 테스트 후 키를 교체하거나 폐기하세요. 장기 운영 서비스는 서버 프록시를 사용하고 Ticketmaster가 모든 국가의 공연을 다루지 않는 점을 고려하세요.','Music metadata and previews use Apple’s public iTunes Search URL without a key. Tour dates use a temporary Ticketmaster key embedded in script.js. A key committed to GitHub becomes public, so replace or revoke it after testing. For a long-running public app, use a server proxy. Ticketmaster does not cover every country or event.')}</p><div class="api-doc-links"><a href="https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/" target="_blank" rel="noopener noreferrer">iTunes Search API info ↗</a><a href="https://developers.google.com/youtube/iframe_api_reference" target="_blank" rel="noopener noreferrer">YouTube IFrame API ↗</a><a href="https://developer.ticketmaster.com/" target="_blank" rel="noopener noreferrer">Ticketmaster Discovery API ↗</a></div></article>
+        <article class="help-card"><span class="help-icon">i</span><h2>${tr('API 및 키 관리','APIs & key handling')}</h2><p>${tr('음원·표지 데이터는 공개 iTunes Search URL에서 API 키 없이 조회합니다. 투어 지도는 먼저 Ticketmaster attraction ID를 찾고 그 ID로 예정 공연을 조회합니다. API 범위와 좌표 제공 여부에 따라 지도 핀이 없을 수 있으며, 실제 공연 데이터가 없을 때 임의 일정을 만들지 않습니다. script.js의 임시 키는 공개 저장소에서 보일 수 있으므로 테스트 후 교체하거나 폐기하세요. 장기 운영 서비스는 서버 프록시를 사용하는 것이 좋습니다.','Music metadata and previews use Apple’s public iTunes Search URL without a key. Tour Map resolves Ticketmaster attraction IDs before querying upcoming events. Map pins depend on event coverage and venue coordinates; the app never invents dates. The temporary key in script.js is public in this repository and should be rotated or revoked after testing. Use a server proxy for long-term production.')}</p><div class="api-doc-links"><a href="https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/" target="_blank" rel="noopener noreferrer">iTunes Search API info ↗</a><a href="https://developers.google.com/youtube/iframe_api_reference" target="_blank" rel="noopener noreferrer">YouTube IFrame API ↗</a><a href="https://developer.ticketmaster.com/" target="_blank" rel="noopener noreferrer">Ticketmaster Discovery API ↗</a></div></article>
       </section>`;
   }
 
@@ -653,7 +653,21 @@ window.SIDEWAVE_DATA = (() => {
       $('#artist-search')?.addEventListener('input', renderArtistResults);
     }
     observeArtwork();
-    if (currentRoute === 'tours') initMap();
+    if (currentRoute === 'tours') {
+      initMap();
+      // Automatically fetch live results the first time Tour Map is opened. The status guard
+      // prevents render() from starting duplicate API requests during a search or filter change.
+      if (state.ticketmasterKey && state.following.length && !state.loadingTours && state.tourStatus === 'not-configured') {
+        Promise.resolve().then(async () => {
+          if (currentRoute !== 'tours' || state.loadingTours || state.tourStatus !== 'not-configured') return;
+          state.loadingTours = true;
+          state.tourStatus = 'loading';
+          render();
+          await loadLiveTours();
+          if (currentRoute === 'tours') render();
+        });
+      }
+    }
     if (currentRoute === 'artist' && state.activeArtistTab === 'songs') loadDeezerTracks(route.id);
     if (currentRoute === 'library') initYouTubePlayer();
   }
@@ -772,57 +786,184 @@ window.SIDEWAVE_DATA = (() => {
     return tracks.map((track,index) => `<article class="song-row"><span class="song-index">${String(index+1).padStart(2,'0')}</span><img class="song-cover" src="${esc(track.album?.cover_small || '')}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><span class="song-info"><strong>${esc(track.title)}</strong><small>${esc(track.artist?.name || '')} · ${esc(track.album?.title || '')}</small>${track.externalUrl ? `<a href="${esc(track.externalUrl)}" target="_blank" rel="noopener noreferrer">${tr('Apple Music에서 보기','View on Apple Music')} ↗</a>` : ''}</span><audio controls preload="none" src="${esc(track.preview)}" aria-label="${esc(track.title)} preview"></audio></article>`).join('');
   }
 
-  function validCoords(event) { return Number.isFinite(event.lat) && Number.isFinite(event.lon) && event.lat >= -90 && event.lat <= 90 && event.lon >= -180 && event.lon <= 180 && !(event.lat === 0 && event.lon === 0); }
+  function validCoords(event) {
+    return Number.isFinite(event.lat) && Number.isFinite(event.lon) &&
+      event.lat >= -90 && event.lat <= 90 && event.lon >= -180 && event.lon <= 180 &&
+      !(event.lat === 0 && event.lon === 0);
+  }
+
+  // Ticketmaster's `keyword` event parameter searches event titles, not artist credits.
+  // Resolve the artist through /attractions.json first, then query events with attractionId.
+  const ARTIST_API_ALIASES = {
+    'silica-gel': ['Silica Gel'], 'hyukoh': ['HYUKOH'], 'jannabi': ['Jannabi'],
+    'black-skirts': ['The Black Skirts'], 'se-so-neon': ['SE SO NEON'], 'day6': ['DAY6'],
+    'n-flying': ['N.Flying'], 'lucy': ['LUCY'], 'the-poles': ['The Poles'],
+    'wave-to-earth': ['wave to earth'], 'one-ok-rock': ['ONE OK ROCK'],
+    'nell': ['NELL'], 'soran': ['Soran'], 'peppertones': ['Peppertones'],
+    'iu': ['IU', 'Lee Ji-eun'], 'akmu': ['AKMU', 'Akdong Musician'],
+    'bts': ['BTS', 'Bangtan Boys'], 'blackpink': ['BLACKPINK'], 'newjeans': ['NewJeans'],
+    'gidle': ['i-dle', '(G)I-DLE'], 'ye': ['Kanye West'], 'the-weeknd': ['The Weeknd'],
+    'twenty-one-pilots': ['Twenty One Pilots'], 'green-day': ['Green Day']
+  };
+  let lastTicketmasterRequestAt = 0;
+  const ticketmasterRequestGap = 575;
+
+  function artistSearchTerms(a) {
+    const base = String(a.name || '').replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+    const terms = [base, ...(ARTIST_API_ALIASES[a.id] || [])].filter(Boolean);
+    return [...new Map(terms.map(term => [normalize(term), term])).values()];
+  }
+
+  async function ticketmasterJson(resource, params, key) {
+    const wait = Math.max(0, ticketmasterRequestGap - (Date.now() - lastTicketmasterRequestAt));
+    if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+    const query = new URLSearchParams({ ...params, apikey: key });
+    lastTicketmasterRequestAt = Date.now();
+    let response;
+    try {
+      response = await fetch(`https://app.ticketmaster.com/discovery/v2/${resource}.json?${query.toString()}`, {
+        method: 'GET', headers: { Accept: 'application/json' }
+      });
+    } catch (error) {
+      throw new Error(tr(
+        'Ticketmaster에 연결하지 못했어요. 인터넷 연결 또는 브라우저의 네트워크 차단을 확인해 주세요.',
+        'Could not connect to Ticketmaster. Check your internet connection or browser network restrictions.'
+      ));
+    }
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) throw new Error(tr('Ticketmaster API 키가 거부됐어요. Developer Portal에서 Consumer Key 상태를 확인해 주세요.','Ticketmaster rejected the API key. Check the Consumer Key in the Developer Portal.'));
+      if (response.status === 429) throw new Error(tr('Ticketmaster 요청 한도에 도달했어요. 잠시 후 다시 검색해 주세요.','Ticketmaster rate limit reached. Wait briefly and retry.'));
+      throw new Error(`Ticketmaster HTTP ${response.status}`);
+    }
+    return response.json();
+  }
+
+  function pickArtistAttraction(items, a, queriedTerm) {
+    if (!items.length) return null;
+    const terms = artistSearchTerms(a).map(normalize).filter(term => term.length >= 3);
+    const queryName = normalize(queriedTerm);
+    const scored = items.map(item => {
+      const name = normalize(item.name || '');
+      let score = 0;
+      if (terms.includes(name)) score = 100;
+      else if (name === queryName) score = 95;
+      else if (terms.some(term => term.length >= 5 && name.includes(term))) score = 75;
+      else if (terms.some(term => term.length >= 5 && term.includes(name) && name.length >= 5)) score = 60;
+      return { item, score };
+    }).filter(entry => entry.score > 0).sort((a,b) => b.score - a.score);
+    // Do not map an unrelated result returned for a short or ambiguous name.
+    return scored[0]?.item || null;
+  }
+
+  function eventMatchesArtist(ev, a) {
+    const terms = artistSearchTerms(a).map(normalize).filter(term => term.length >= 4);
+    const attractionNames = (ev._embedded?.attractions || []).map(item => normalize(item.name || ''));
+    const matchingAttraction = attractionNames.some(name => terms.some(term => {
+      if (name === term) return true;
+      return term.length >= 5 && (name.includes(term) || term.includes(name));
+    }));
+    if (matchingAttraction) return true;
+    const eventName = normalize(ev.name || '');
+    return terms.some(term => eventName === term || (term.length >= 5 && eventName.includes(term)));
+  }
+
+  function toSidewaveEvent(ev, a) {
+    const venue = ev._embedded?.venues?.[0] || {};
+    const loc = venue.location || ev.place?.location || {};
+    const latValue = loc.latitude ?? loc.lat;
+    const lonValue = loc.longitude ?? loc.lon ?? loc.lng;
+    const parseCoord = value => value == null || String(value).trim() === '' ? NaN : Number(value);
+    return {
+      id: ev.id,
+      artistId: a.id,
+      name: ev.name || a.name,
+      date: ev.dates?.start?.localDate || ev.dates?.start?.dateTime?.slice(0, 10) || '',
+      time: ev.dates?.start?.localTime || '',
+      city: venue.city?.name || ev.place?.city?.name || '',
+      venue: venue.name || ev.place?.name || '',
+      country: venue.country?.name || ev.place?.country?.name || '',
+      countryCode: venue.country?.countryCode || ev.place?.country?.countryCode || '',
+      lat: parseCoord(latValue),
+      lon: parseCoord(lonValue),
+      source: 'Ticketmaster',
+      url: ev.url || '',
+      ticketUrl: ev.url || ''
+    };
+  }
+
+  async function searchAttractionEvents(a, key, startDateTime) {
+    const terms = artistSearchTerms(a);
+    let attraction = null;
+    for (const term of terms.slice(0, 3)) {
+      const attractionData = await ticketmasterJson('attractions', {
+        keyword: term, classificationName: 'music', size: '10', locale: 'en-us,en,*'
+      }, key);
+      const attractions = attractionData?._embedded?.attractions || [];
+      attraction = pickArtistAttraction(attractions, a, term);
+      if (attraction?.id) break;
+    }
+
+    if (attraction?.id) {
+      const eventData = await ticketmasterJson('events', {
+        attractionId: attraction.id,
+        classificationName: 'music',
+        size: '20',
+        sort: 'date,asc',
+        startDateTime,
+        includeTBA: 'no',
+        locale: 'en-us,en,*'
+      }, key);
+      // attractionId is a direct relation to the actual artist entity, so no title-keyword filter is needed.
+      return (eventData?._embedded?.events || []).map(ev => toSidewaveEvent(ev, a));
+    }
+
+    // Some smaller/regional acts are not exposed as attraction entities. A title keyword is
+    // only a fallback, and strict matching prevents unrelated events from becoming fake artist shows.
+    const fallbackTerm = terms.find(term => normalize(term).length >= 4) || terms[0];
+    if (!fallbackTerm) return [];
+    const eventData = await ticketmasterJson('events', {
+      keyword: fallbackTerm,
+      classificationName: 'music',
+      size: '15',
+      sort: 'date,asc',
+      startDateTime,
+      includeTBA: 'no',
+      locale: 'en-us,en,*'
+    }, key);
+    return (eventData?._embedded?.events || []).filter(ev => eventMatchesArtist(ev, a)).map(ev => toSidewaveEvent(ev, a));
+  }
+
   async function loadLiveTours() {
     const key = state.ticketmasterKey.trim();
     if (!key) { state.tourStatus = 'not-configured'; state.events = []; return []; }
     state.loadingTours = true;
     state.tourStatus = 'loading';
+    state.tourError = '';
     const followed = state.following.map(id => artist(id)).slice(0, 12);
     const found = [];
     try {
-      // Ticketmaster's default public quota is limited; query artists sequentially and cap this run.
+      // Keep each network request below Ticketmaster's documented public API request rate.
+      const startDateTime = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
       for (const a of followed) {
-        const params = new URLSearchParams({ apikey: key, keyword: a.name, classificationName: 'music', size: '8', sort: 'date,asc', includeTBA: 'no', startDateTime: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z') });
-        const response = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?${params.toString()}`);
-        if (!response.ok) {
-          if (response.status === 401 || response.status === 403) throw new Error('API key rejected. Check the Consumer Key.');
-          if (response.status === 429) throw new Error('Ticketmaster rate limit reached. Wait a little and try again.');
-          throw new Error(`Ticketmaster returned HTTP ${response.status}`);
-        }
-        const data = await response.json();
-        const items = data?._embedded?.events || [];
-        for (const ev of items) {
-          const attractions = (ev._embedded?.attractions || []).map(x => normalize(x.name));
-          const eventName = normalize(ev.name || '');
-          const expected = normalize(a.name);
-          // Avoid unrelated keyword hits where an attraction name is present.
-          if (attractions.length && !attractions.some(n => n === expected || n.includes(expected) || expected.includes(n)) && !eventName.includes(expected)) continue;
-          const venue = ev._embedded?.venues?.[0] || {};
-          const loc = venue.location || {};
-          const date = ev.dates?.start?.localDate || ev.dates?.start?.dateTime?.slice(0,10) || '';
-          found.push({
-            id: ev.id, artistId: a.id, name: ev.name || a.name, date,
-            time: ev.dates?.start?.localTime || '', city: venue.city?.name || '', venue: venue.name || '',
-            country: venue.country?.name || '', countryCode: venue.country?.countryCode || '',
-            lat: loc.latitude ? Number(loc.latitude) : NaN, lon: loc.longitude ? Number(loc.longitude) : NaN,
-            source: 'Ticketmaster', url: ev.url || '', ticketUrl: ev.url || ''
-          });
-        }
-        // Keep requests under the default public API rate limit.
-        await new Promise(resolve => setTimeout(resolve, 550));
+        const artistEvents = await searchAttractionEvents(a, key, startDateTime);
+        found.push(...artistEvents);
       }
       const unique = new Map();
       found.forEach(ev => unique.set(ev.id || `${ev.artistId}-${ev.date}-${ev.venue}`, ev));
       state.events = [...unique.values()].sort((a,b) => String(a.date || '9999').localeCompare(String(b.date || '9999')));
-      state.eventsUpdated = Date.now(); state.eventsArtists = artistListHash(); state.tourStatus = 'connected';
+      state.eventsUpdated = Date.now();
+      state.eventsArtists = artistListHash();
+      state.tourStatus = 'connected';
       return state.events;
     } catch (error) {
       console.warn('SIDEWAVE Ticketmaster API:', error);
       state.tourStatus = 'error';
-      toast(error.message || tr('Ticketmaster 연결에 실패했어요.','Ticketmaster connection failed.'));
+      state.tourError = error.message || tr('Ticketmaster 연결에 실패했어요.','Ticketmaster connection failed.');
+      toast(state.tourError);
       return [];
-    } finally { state.loadingTours = false; }
+    } finally {
+      state.loadingTours = false;
+    }
   }
   function artistListHash() { return [...state.following].sort().join('|'); }
   function updateTourStatusOnly() { /* Status is rendered from state on the next render. */ }
@@ -848,7 +989,25 @@ window.SIDEWAVE_DATA = (() => {
     if (!events.length || !bounds.length) {
       const overlay = document.createElement('div');
       overlay.className = 'map-empty-overlay';
-      overlay.innerHTML = `<div class="empty-state"><strong>${!state.following.length ? tr('아티스트를 팔로우해 주세요.','Follow artists to begin.') : tr('자동 지도 마커용 공개 일정 URL이 없습니다.','No public structured event URL is available for automatic map pins.')}</strong><p>${tr('지도에는 확인된 공연 좌표가 필요합니다. 오른쪽의 공식 출처에서 최신 일정과 장소를 확인하세요.','Map pins require verified show coordinates. Use the official links on the right for current dates and venues.')}</p></div>`;
+      let title = tr('공연 검색을 시작해 주세요.','Ready to search for shows.');
+      let description = tr('투어 지도에 들어오면 실제 Ticketmaster 공연을 자동으로 검색합니다. 직접 다시 확인하려면 오른쪽 위의 실제 공연 검색 버튼을 누르세요.','The Tour Map searches current Ticketmaster events automatically. Use Search live events to retry at any time.');
+      if (!state.following.length) {
+        title = tr('아티스트를 먼저 팔로우해 주세요.','Follow artists to begin.');
+        description = tr('팔로우한 아티스트의 공연만 검색하고 지도에 표시합니다.','Only followed artists are searched and mapped.');
+      } else if (state.loadingTours || state.tourStatus === 'loading') {
+        title = tr('실제 공연 데이터를 불러오는 중…','Loading real event data…');
+        description = tr('아티스트 ID와 공연 위치를 확인하고 있습니다. 검색이 끝나면 핀이 자동으로 표시됩니다.','Resolving artist IDs and venue locations. Map pins will appear when the search finishes.');
+      } else if (state.tourStatus === 'error') {
+        title = tr('공연 API 연결에 실패했어요.','Could not connect to the events API.');
+        description = state.tourError || tr('API 키 상태와 인터넷 연결을 확인한 뒤 다시 검색해 주세요.','Check the API key and internet connection, then retry.');
+      } else if (events.length && !bounds.length) {
+        title = tr(`${events.length}개 공연은 찾았지만 지도 좌표가 없어요.`, `${events.length} event(s) found, but no map coordinates were returned.`);
+        description = tr('이 공연은 오른쪽 목록에서 날짜·장소·공식 티켓 링크를 확인할 수 있어요. Ticketmaster가 장소 좌표를 제공하지 않은 항목은 지도 핀을 만들지 않습니다.','You can still use the event list on the right for dates, venues and official ticket links. Events without venue coordinates cannot be pinned accurately.');
+      } else if (state.tourStatus === 'connected') {
+        title = tr('현재 검색된 예정 공연이 없어요.','No upcoming events were found for these artists.');
+        description = tr('아티스트를 찾은 뒤 공식 attraction ID로 공연을 조회했지만 예정 일정이 없거나 Ticketmaster가 해당 공연을 제공하지 않습니다. 아래 공식 출처 링크에서 다른 예매처도 확인해 주세요.','Artist records were resolved and their future events were queried, but no upcoming events were returned. Coverage varies by ticket provider; check the official source links below.');
+      }
+      overlay.innerHTML = `<div class="empty-state"><strong>${esc(title)}</strong><p>${esc(description)}</p>${state.tourStatus === 'error' ? `<button class="btn small" data-action="search-tours">${tr('다시 검색','Retry search')}</button>` : ''}</div>`;
       el.appendChild(overlay);
     }
     setTimeout(() => { if (mapInstance) mapInstance.invalidateSize({ pan:false }); }, 100);
